@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="FlightWall">
+  <title>FlightWall</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: #07090f;
+      color: #ccd9ef;
+      font-family: 'Courier New', Courier, monospace;
+      height: 100vh;
+      overflow: hidden;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-direction: column;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    #hdr {
+      background: #0b0f1c;
+      border-bottom: 1px solid #1a3356;
+      padding: 6px 10px;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      -webkit-flex-shrink: 0;
+      flex-shrink: 0;
+      z-index: 900;
+    }
+
+    #logo {
+      font-size: 16px;
+      font-weight: bold;
+      color: #38bdf8;
+      letter-spacing: 3px;
+      white-space: nowrap;
+    }
+
+    #stats {
+      display: -webkit-flex;
+      display: flex;
+      gap: 12px;
+      -webkit-align-items: center;
+      align-items: center;
+    }
+
+    .sv { color: #38bdf8; font-size: 15px; font-weight: bold; }
+    .sl { color: #4a6480; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; display: block; }
+
+    #dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: inline-block;
+    }
+    #dot.busy { background: #f59e0b; -webkit-animation: blink .5s infinite alternate; animation: blink .5s infinite alternate; }
+    #dot.err  { background: #ef4444; }
+
+    @-webkit-keyframes blink { from{opacity:.4} to{opacity:1} }
+    @keyframes blink         { from{opacity:.4} to{opacity:1} }
+
+    #hdr-btns { display: -webkit-flex; display: flex; gap: 6px; }
+
+    .btn {
+      background: rgba(56,189,248,.08);
+      border: 1px solid #1a3356;
+      color: #38bdf8;
+      padding: 5px 9px;
+      border-radius: 5px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:active { background: rgba(56,189,248,.25); }
+
+    /* ── Map ── */
+    #map { -webkit-flex: 1; flex: 1; z-index: 1; }
+
+    /* ── Aircraft detail card ── */
+    #ac-card {
+      display: none;
+      position: absolute;
+      left: 10px; right: 10px;
+      bottom: 190px;
+      background: rgba(7,9,15,.96);
+      border: 1px solid #38bdf8;
+      border-radius: 8px;
+      padding: 12px 14px 10px;
+      z-index: 600;
+      -webkit-box-shadow: 0 4px 20px rgba(0,0,0,.7);
+      box-shadow: 0 4px 20px rgba(0,0,0,.7);
+    }
+    #ac-card.show { display: block; }
+    #ac-card h3 { font-size: 18px; color: #38bdf8; margin-bottom: 8px; }
+    .ac-row { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(26,51,86,.5); }
+    .ac-lbl { color: #4a6480; }
+    .ac-val { color: #e2eaf6; }
+    .ac-val.alt { color: #5eead4; }
+    .ac-val.spd { color: #fbbf24; }
+    #ac-close { margin-top: 9px; width: 100%; }
+
+    /* ── Flight list panel ── */
+    #panel {
+      background: rgba(7,9,15,.97);
+      border-top: 1px solid #1a3356;
+      -webkit-flex-shrink: 0;
+      flex-shrink: 0;
+      max-height: 180px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      z-index: 500;
+    }
+
+    #panel-hdr {
+      background: #0b0f1c;
+      padding: 7px 12px;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      cursor: pointer;
+      position: -webkit-sticky;
+      position: sticky;
+      top: 0;
+      border-bottom: 1px solid #1a3356;
+    }
+    #panel-title { font-size: 10px; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; }
+    #panel-arrow { font-size: 10px; color: #4a6480; }
+
+    #panel.collapsed #flight-list { display: none; }
+    #panel.collapsed #panel-arrow { -webkit-transform: rotate(-90deg); transform: rotate(-90deg); }
+
+    /* Table header */
+    #list-header {
+      display: -webkit-flex;
+      display: flex;
+      padding: 4px 12px;
+      font-size: 9px;
+      color: #4a6480;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 1px solid #0f1e35;
+    }
+
+    .fr {
+      display: -webkit-flex;
+      display: flex;
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(26,51,86,.35);
+      font-size: 11px;
+      cursor: pointer;
+      -webkit-align-items: center;
+      align-items: center;
+    }
+    .fr:active { background: rgba(56,189,248,.1); }
+    .fr.sel { background: rgba(56,189,248,.12); border-left: 2px solid #38bdf8; padding-left: 10px; }
+
+    .f1 { -webkit-flex: 0 0 72px; flex: 0 0 72px; color: #fff; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .f2 { -webkit-flex: 0 0 66px; flex: 0 0 66px; color: #5eead4; text-align: right; }
+    .f3 { -webkit-flex: 0 0 62px; flex: 0 0 62px; color: #fbbf24; text-align: right; }
+    .f4 { -webkit-flex: 1; flex: 1; color: #6b84a0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Settings overlay ── */
+    #settings {
+      display: none;
+      position: absolute;
+      top: 48px; right: 0;
+      width: 270px;
+      background: rgba(7,9,15,.98);
+      border: 1px solid #1a3356;
+      border-radius: 0 0 0 8px;
+      padding: 14px;
+      z-index: 800;
+      -webkit-box-shadow: -4px 4px 20px rgba(0,0,0,.6);
+      box-shadow: -4px 4px 20px rgba(0,0,0,.6);
+    }
+    #settings.show { display: block; }
+    #settings h4 { font-size: 11px; color: #4a6480; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; }
+    .set-row { margin-bottom: 10px; }
+    .set-row label { font-size: 11px; color: #8aa4c0; display: block; margin-bottom: 4px; }
+    .set-row select, .set-row input[type=range] { width: 100%; background: #0d1525; border: 1px solid #1a3356; color: #ccd9ef; padding: 5px; border-radius: 4px; font-size: 12px; -webkit-appearance: none; }
+    .set-row input[type=range] { padding: 0; }
+    .set-row .toggle { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; gap: 8px; cursor: pointer; }
+    .set-row .toggle input[type=checkbox] { width: 16px; height: 16px; }
+    #interval-val { color: #38bdf8; font-size: 11px; }
+
+    /* ── Leaflet overrides ── */
+    .leaflet-container { background: #07090f !important; }
+    .leaflet-popup-content-wrapper {
+      background: rgba(7,9,15,.96);
+      color: #ccd9ef;
+      border: 1px solid #38bdf8;
+      border-radius: 6px;
+      -webkit-box-shadow: 0 4px 16px rgba(0,0,0,.7);
+      box-shadow: 0 4px 16px rgba(0,0,0,.7);
+    }
+    .leaflet-popup-tip { background: #38bdf8; }
+    .leaflet-popup-close-button { color: #38bdf8 !important; }
+    .ac-icon { background: none !important; border: none !important; }
+
+    /* ── Error / loading toast ── */
+    #toast {
+      display: none;
+      position: absolute;
+      top: 56px; left: 50%;
+      -webkit-transform: translateX(-50%);
+      transform: translateX(-50%);
+      background: rgba(7,9,15,.95);
+      border: 1px solid #1a3356;
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 11px;
+      color: #8aa4c0;
+      z-index: 1000;
+      white-space: nowrap;
+    }
+    #toast.show { display: block; }
+
+    /* scrollbar */
+    #panel::-webkit-scrollbar { width: 3px; }
+    #panel::-webkit-scrollbar-track { background: #07090f; }
+    #panel::-webkit-scrollbar-thumb { background: #1a3356; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="hdr">
+  <div id="logo">✈ FLIGHTWALL</div>
+  <div id="stats">
+    <div style="text-align:center">
+      <span class="sv" id="s-total">—</span>
+      <span class="sl">aircraft</span>
+    </div>
+    <div style="text-align:center">
+      <span class="sv" id="s-air">—</span>
+      <span class="sl">airborne</span>
+    </div>
+    <div style="text-align:center">
+      <span id="dot"></span>
+      <span class="sl" id="s-time">—</span>
+    </div>
+  </div>
+  <div id="hdr-btns">
+    <button class="btn" id="btn-loc" title="Center on me">⊕</button>
+    <button class="btn" id="btn-ref" title="Refresh now">↺</button>
+    <button class="btn" id="btn-cfg" title="Settings">⚙</button>
+  </div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Aircraft detail card -->
+<div id="ac-card">
+  <h3 id="ac-call">—</h3>
+  <div id="ac-body"></div>
+  <button class="btn" id="ac-close">✕ Close</button>
+</div>
+
+<!-- Toast -->
+<div id="toast" id="toast"></div>
+
+<!-- Flight list panel -->
+<div id="panel">
+  <div id="panel-hdr">
+    <span id="panel-title">Flights ▸ tap to track</span>
+    <span id="panel-arrow">▼</span>
+  </div>
+  <div id="list-header">
+    <span class="f1">Callsign</span>
+    <span class="f2">Alt (ft)</span>
+    <span class="f3">Spd (kts)</span>
+    <span class="f4">Country</span>
+  </div>
+  <div id="flight-list"></div>
+</div>
+
+<!-- Settings overlay -->
+<div id="settings">
+  <h4>⚙ Settings</h4>
+
+  <div class="set-row">
+    <label>Region</label>
+    <select id="cfg-region">
+      <option value="US">United States</option>
+      <option value="EU">Europe</option>
+      <option value="APAC">Asia–Pacific</option>
+      <option value="AU">Australia</option>
+      <option value="ME">Middle East</option>
+      <option value="LATAM">Latin America</option>
+      <option value="WORLD">Global (slow)</option>
+    </select>
+  </div>
+
+  <div class="set-row">
+    <label>Refresh every <span id="interval-val">15s</span></label>
+    <input type="range" id="cfg-interval" min="10" max="60" step="5" value="15">
+  </div>
+
+  <div class="set-row">
+    <label class="toggle">
+      <input type="checkbox" id="cfg-ground">
+      Show aircraft on ground
+    </label>
+  </div>
+
+  <div class="set-row">
+    <label class="toggle">
+      <input type="checkbox" id="cfg-labels" checked>
+      Show callsign labels
+    </label>
+  </div>
+
+  <button class="btn" id="cfg-save" style="width:100%; margin-top:6px;">Apply &amp; Close</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// FlightWall — iOS 9.3.5 compatible
+// OpenSky Network API  •  Leaflet 1.7.1
+// ─────────────────────────────────────────────
+
+var REGIONS = {
+  US:    { b:[24,-125,49,-66],    c:[38,-97],   z:4 },
+  EU:    { b:[36,-10,62,32],      c:[50,14],    z:4 },
+  APAC:  { b:[-10,95,50,150],     c:[25,122],   z:3 },
+  AU:    { b:[-44,112,-10,155],   c:[-25,134],  z:4 },
+  ME:    { b:[12,32,42,65],       c:[26,48],    z:5 },
+  LATAM: { b:[-55,-85,25,-34],    c:[-15,-60],  z:3 },
+  WORLD: { b:[-60,-180,80,180],   c:[20,0],     z:2 }
+};
+
+var cfg = {
+  region: 'US',
+  interval: 15,
+  showGround: false,
+  showLabels: true
+};
+
+// Load saved prefs
+try {
+  var saved = localStorage.getItem('fw_cfg');
+  if (saved) {
+    var p = JSON.parse(saved);
+    cfg.region   = p.region   || cfg.region;
+    cfg.interval = p.interval || cfg.interval;
+    cfg.showGround  = !!p.showGround;
+    cfg.showLabels  = p.showLabels !== false;
+  }
+} catch(e) {}
+
+// ── Map init ──
+var reg = REGIONS[cfg.region] || REGIONS['US'];
+var map = L.map('map', {
+  center: reg.c,
+  zoom:   reg.z,
+  zoomControl: true,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 18,
+  attribution: '© CARTO © OSM'
+}).addTo(map);
+
+L.control.attribution({ position: 'bottomleft', prefix: '© CARTO · OpenSky' }).addTo(map);
+
+// ── State ──
+var aircraft = {};   // icao24 → data obj
+var markers  = {};   // icao24 → L.marker
+var selectedIcao = null;
+var refreshTimer = null;
+var panelOpen = true;
+
+// ── SVG airplane icon factory ──
+function makeIcon(ac, selected) {
+  var hdg  = ac.heading != null ? ac.heading : 0;
+  var alt  = ac.altitude || 0;
+  var size = selected ? 22 : 16;
+  var color;
+  if (ac.onGround)   color = '#6b7280';
+  else if (alt < 3000) color = '#34d399';
+  else if (alt < 8000) color = '#fbbf24';
+  else                 color = '#38bdf8';
+
+  // Plane shape pointing UP (north = 0°)
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="'+size+'" height="'+size+'">'
+    + '<polygon points="10,1 7,19 10,16 13,19" fill="'+color+'" stroke="rgba(0,0,0,.6)" stroke-width=".8"/>'
+    + '<polygon points="10,7 1,14 3,14 10,11 17,14 19,14" fill="'+color+'" stroke="rgba(0,0,0,.6)" stroke-width=".8"/>'
+    + '</svg>';
+
+  var labelHtml = '';
+  if (cfg.showLabels && ac.callsign) {
+    labelHtml = '<div style="position:absolute;top:'+(size+1)+'px;left:50%;'
+      + '-webkit-transform:translateX(-50%);transform:translateX(-50%);'
+      + 'font-size:9px;color:#94c4f0;white-space:nowrap;pointer-events:none;'
+      + 'text-shadow:0 0 3px #000,0 0 6px #000;">' + ac.callsign + '</div>';
+  }
+
+  var html = '<div style="position:relative;width:'+size+'px;height:'+size+'px;">'
+    + '<div style="-webkit-transform:rotate('+hdg+'deg);transform:rotate('+hdg+'deg);">'
+    + svg + '</div>' + labelHtml + '</div>';
+
+  return L.divIcon({
+    html:       html,
+    className:  'ac-icon',
+    iconSize:   [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
+
+// ── Format helpers ──
+function fAlt(m)  { return m != null ? Math.round(m * 3.28084).toLocaleString() : '—'; }
+function fSpd(ms) { return ms != null ? Math.round(ms * 1.94384) : '—'; }
+function fVsi(vr) {
+  if (vr == null) return '—';
+  var fpm = Math.round(Math.abs(vr) * 196.85);
+  return (vr > 50 ? '▲ ' : vr < -50 ? '▼ ' : '► ') + fpm.toLocaleString() + ' fpm';
+}
+function fHdg(h) {
+  if (h == null) return '—';
+  var dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return Math.round(h) + '° ' + dirs[Math.round(h/45) % 8];
+}
+function nowTime() {
+  var d = new Date();
+  return ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2) + ':' + ('0'+d.getSeconds()).slice(-2);
+}
+
+// ── Fetch from OpenSky ──
+function fetchFlights() {
+  var dot = document.getElementById('dot');
+  dot.className = 'busy';
+
+  var r   = REGIONS[cfg.region] || REGIONS['US'];
+  var b   = r.b;
+  var url = 'https://opensky-network.org/api/states/all'
+    + '?lamin=' + b[0] + '&lomin=' + b[1] + '&lamax=' + b[2] + '&lomax=' + b[3];
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.timeout = 20000;
+
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    dot.className = '';
+    if (xhr.status === 200) {
+      try {
+        var data = JSON.parse(xhr.responseText);
+        processData(data);
+        dot.className = '';
+      } catch(e) {
+        showToast('Parse error — retrying…');
+        dot.className = 'err';
+      }
+    } else if (xhr.status === 429) {
+      showToast('Rate limited by OpenSky — slowing refresh');
+      dot.className = 'err';
+      cfg.interval = Math.min(cfg.interval + 10, 60);
+    } else {
+      showToast('OpenSky returned ' + xhr.status);
+      dot.className = 'err';
+    }
+  };
+
+  xhr.ontimeout = function() {
+    dot.className = 'err';
+    showToast('Request timed out');
+  };
+
+  xhr.onerror = function() {
+    dot.className = 'err';
+    showToast('Network error — check Wi-Fi');
+  };
+
+  xhr.send();
+}
+
+// ── Process API response ──
+// State vector: [icao24, callsign, origin_country, time_position, last_contact,
+//                lon, lat, baro_alt, on_ground, velocity, true_track,
+//                vertical_rate, sensors, geo_alt, squawk, spi, position_source]
+function processData(data) {
+  var newAc = {};
+
+  if (data && data.states) {
+    var states = data.states;
+    for (var i = 0; i < states.length; i++) {
+      var s = states[i];
+      var ac = {
+        icao24:       s[0],
+        callsign:     s[1] ? s[1].trim() : '',
+        country:      s[2] || '',
+        lon:          s[5],
+        lat:          s[6],
+        altitude:     s[7],
+        onGround:     !!s[8],
+        velocity:     s[9],
+        heading:      s[10],
+        verticalRate: s[11],
+        squawk:       s[14] || ''
+      };
+      if (ac.lat == null || ac.lon == null) continue;
+      if (!cfg.showGround && ac.onGround) continue;
+      newAc[ac.icao24] = ac;
+    }
+  }
+
+  aircraft = newAc;
+  updateMarkers();
+  updateStats();
+  updateList();
+  document.getElementById('s-time').textContent = nowTime();
+}
+
+// ── Map markers ──
+function updateMarkers() {
+  // Remove gone aircraft
+  var icaos = Object.keys(markers);
+  for (var i = 0; i < icaos.length; i++) {
+    var id = icaos[i];
+    if (!aircraft[id]) {
+      map.removeLayer(markers[id]);
+      delete markers[id];
+    }
+  }
+  // Add / update
+  var ids = Object.keys(aircraft);
+  for (var j = 0; j < ids.length; j++) {
+    var ac = aircraft[ids[j]];
+    var sel = ac.icao24 === selectedIcao;
+    if (markers[ac.icao24]) {
+      markers[ac.icao24].setLatLng([ac.lat, ac.lon]);
+      markers[ac.icao24].setIcon(makeIcon(ac, sel));
+    } else {
+      var m = L.marker([ac.lat, ac.lon], { icon: makeIcon(ac, sel) });
+      (function(icao) {
+        m.on('click', function() { selectAircraft(icao); });
+      })(ac.icao24);
+      m.addTo(map);
+      markers[ac.icao24] = m;
+    }
+  }
+}
+
+// ── Stats bar ──
+function updateStats() {
+  var total = 0, air = 0;
+  var ids = Object.keys(aircraft);
+  total = ids.length;
+  for (var i = 0; i < ids.length; i++) {
+    if (!aircraft[ids[i]].onGround) air++;
+  }
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-air').textContent   = air;
+}
+
+// ── Flight list ──
+function updateList() {
+  var list = document.getElementById('flight-list');
+  var ids = Object.keys(aircraft);
+
+  // Sort: airborne first, then by altitude desc
+  ids.sort(function(a, b) {
+    var A = aircraft[a], B = aircraft[b];
+    if (A.onGround !== B.onGround) return A.onGround ? 1 : -1;
+    return (B.altitude || 0) - (A.altitude || 0);
+  });
+
+  var html = '';
+  for (var i = 0; i < ids.length; i++) {
+    var ac = aircraft[ids[i]];
+    var sel = ac.icao24 === selectedIcao ? ' sel' : '';
+    var cs  = ac.callsign || ac.icao24.toUpperCase();
+    html += '<div class="fr'+sel+'" data-id="'+ac.icao24+'">'
+      + '<span class="f1">'+cs+'</span>'
+      + '<span class="f2">'+fAlt(ac.altitude)+'</span>'
+      + '<span class="f3">'+fSpd(ac.velocity)+'</span>'
+      + '<span class="f4">'+ac.country+'</span>'
+      + '</div>';
+  }
+  list.innerHTML = html || '<div style="padding:12px;color:#4a6480;font-size:11px;text-align:center;">No aircraft in range</div>';
+
+  // Attach tap listeners
+  var rows = list.querySelectorAll('.fr');
+  for (var r = 0; r < rows.length; r++) {
+    (function(row) {
+      row.addEventListener('click', function() {
+        selectAircraft(row.getAttribute('data-id'));
+      });
+    })(rows[r]);
+  }
+}
+
+// ── Select / track aircraft ──
+function selectAircraft(icao) {
+  selectedIcao = icao;
+  var ac = aircraft[icao];
+  if (!ac) return;
+
+  // Fly to
+  map.panTo([ac.lat, ac.lon], { animate: true });
+
+  // Show card
+  var card = document.getElementById('ac-card');
+  var cs = ac.callsign || ac.icao24.toUpperCase();
+  document.getElementById('ac-call').textContent = cs;
+
+  var rows = [
+    ['ICAO24',   ac.icao24.toUpperCase()],
+    ['Country',  ac.country || '—'],
+    ['Altitude', fAlt(ac.altitude) + ' ft',  'alt'],
+    ['Speed',    fSpd(ac.velocity) + ' kts', 'spd'],
+    ['Heading',  fHdg(ac.heading)],
+    ['V/S',      fVsi(ac.verticalRate)],
+    ['On Ground',ac.onGround ? 'Yes' : 'No']
+  ];
+  if (ac.squawk) rows.push(['Squawk', ac.squawk]);
+
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    var cls = rows[i][2] ? ' class="ac-val '+rows[i][2]+'"' : ' class="ac-val"';
+    html += '<div class="ac-row"><span class="ac-lbl">'+rows[i][0]+'</span><span'+cls+'>'+rows[i][1]+'</span></div>';
+  }
+  document.getElementById('ac-body').innerHTML = html;
+  card.className = 'show';
+
+  // Refresh markers (highlight selected)
+  updateMarkers();
+  // Scroll list to selected row
+  updateList();
+  var selRow = document.querySelector('.fr.sel');
+  if (selRow) selRow.scrollIntoView({ block: 'nearest' });
+}
+
+function deselectAircraft() {
+  selectedIcao = null;
+  document.getElementById('ac-card').className = '';
+  updateMarkers();
+  updateList();
+}
+
+// ── Auto-refresh ──
+function startRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(fetchFlights, cfg.interval * 1000);
+}
+
+// ── Toast ──
+var toastTimer;
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { t.className = ''; }, 4000);
+}
+
+// ── UI controls ──
+
+// Refresh button
+document.getElementById('btn-ref').addEventListener('click', function() {
+  fetchFlights();
+});
+
+// Locate me
+document.getElementById('btn-loc').addEventListener('click', function() {
+  if (!navigator.geolocation) { showToast('Geolocation not available'); return; }
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 8);
+  }, function() {
+    showToast('Could not get location');
+  });
+});
+
+// Settings toggle
+document.getElementById('btn-cfg').addEventListener('click', function() {
+  var s = document.getElementById('settings');
+  s.className = s.className === 'show' ? '' : 'show';
+});
+
+// Settings panel — sync UI to cfg
+document.getElementById('cfg-region').value = cfg.region;
+document.getElementById('cfg-interval').value = cfg.interval;
+document.getElementById('interval-val').textContent = cfg.interval + 's';
+document.getElementById('cfg-ground').checked = cfg.showGround;
+document.getElementById('cfg-labels').checked = cfg.showLabels;
+
+document.getElementById('cfg-interval').addEventListener('input', function() {
+  document.getElementById('interval-val').textContent = this.value + 's';
+});
+
+document.getElementById('cfg-save').addEventListener('click', function() {
+  cfg.region    = document.getElementById('cfg-region').value;
+  cfg.interval  = parseInt(document.getElementById('cfg-interval').value, 10);
+  cfg.showGround= document.getElementById('cfg-ground').checked;
+  cfg.showLabels= document.getElementById('cfg-labels').checked;
+
+  try { localStorage.setItem('fw_cfg', JSON.stringify(cfg)); } catch(e) {}
+
+  var r = REGIONS[cfg.region] || REGIONS['US'];
+  map.setView(r.c, r.z);
+  document.getElementById('settings').className = '';
+  startRefresh();
+  fetchFlights();
+});
+
+// Panel toggle
+document.getElementById('panel-hdr').addEventListener('click', function() {
+  var p = document.getElementById('panel');
+  panelOpen = !panelOpen;
+  p.className = panelOpen ? '' : 'collapsed';
+});
+
+// Close aircraft card
+document.getElementById('ac-close').addEventListener('click', deselectAircraft);
+
+// Close settings when tapping map
+map.on('click', function() {
+  document.getElementById('settings').className = '';
+});
+
+// ── Boot ──
+fetchFlights();
+startRefresh();
+</script>
+</body>
+</html>
